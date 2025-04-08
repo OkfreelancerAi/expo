@@ -1,4 +1,86 @@
----
+---// Import necessary modules
+const express = require('express');
+const bodyParser = require('body-parser');
+const mongoose = require('mongoose');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+
+const app = express();
+app.use(bodyParser.json());
+
+// MongoDB connection
+mongoose.connect('mongodb://localhost:27017/adultApp', {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+});
+
+// User schema for authentication
+const userSchema = new mongoose.Schema({
+  username: { type: String, required: true },
+  password: { type: String, required: true },
+  ageVerified: { type: Boolean, default: false },
+});
+
+userSchema.pre('save', async function (next) {
+  if (this.isModified('password')) {
+    this.password = await bcrypt.hash(this.password, 10);
+  }
+  next();
+});
+
+const User = mongoose.model('User', userSchema);
+
+// Authentication middleware
+const authenticate = (req, res, next) => {
+  const token = req.headers.authorization;
+  if (!token) return res.status(401).send('Access denied');
+  
+  try {
+    const decoded = jwt.verify(token, 'secretKey');
+    req.user = decoded;
+    next();
+  } catch (err) {
+    res.status(400).send('Invalid token');
+  }
+};
+
+// Routes
+app.post('/register', async (req, res) => {
+  const { username, password } = req.body;
+  
+  try {
+    const user = new User({ username, password });
+    await user.save();
+    res.status(201).send('User registered successfully');
+  } catch (err) {
+    res.status(400).send(err.message);
+  }
+});
+
+app.post('/login', async (req, res) => {
+  const { username, password } = req.body;
+  
+  const user = await User.findOne({ username });
+  if (!user) return res.status(404).send('User not found');
+  
+  const validPassword = await bcrypt.compare(password, user.password);
+  if (!validPassword) return res.status(400).send('Invalid credentials');
+  
+  const token = jwt.sign({ id: user._id }, 'secretKey', { expiresIn: '1h' });
+  res.send({ token });
+});
+
+app.get('/content', authenticate, (req, res) => {
+  // Example content retrieval logic
+  res.send([
+    { id: 1, title: 'Premium Video', category: 'Anal' },
+    { id: 2, title: 'Exclusive Content', category: 'MILF' },
+  ]);
+});
+
+// Start server
+app.listen(3000, () => console.log('Server running on port 3000'));
+
 title: Start developing
 description: Make your first change to an Expo project and see it live on your device.
 hideTOC: true
